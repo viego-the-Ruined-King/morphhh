@@ -6,13 +6,65 @@ import { isProviderEnabled } from '@/lib/utils/registry'
 
 export const maxDuration = 30
 
-const DEFAULT_MODEL: Model = {
-  id: 'gpt-4o-mini',
-  name: 'GPT-4o mini',
-  provider: 'OpenAI',
-  providerId: 'openai',
-  enabled: true,
-  toolCallType: 'native'
+// Fallback model selection based on available providers
+function getDefaultModel(): Model {
+  // Try Google first since it's commonly available
+  if (isProviderEnabled('google')) {
+    return {
+      id: 'gemini-2.0-flash',
+      name: 'Gemini 2.0 Flash',
+      provider: 'Google Generative AI',
+      providerId: 'google',
+      enabled: true,
+      toolCallType: 'manual'
+    }
+  }
+  
+  // Try OpenAI
+  if (isProviderEnabled('openai')) {
+    return {
+      id: 'gpt-4o-mini',
+      name: 'GPT-4o mini',
+      provider: 'OpenAI',
+      providerId: 'openai',
+      enabled: true,
+      toolCallType: 'native'
+    }
+  }
+  
+  // Try Anthropic
+  if (isProviderEnabled('anthropic')) {
+    return {
+      id: 'claude-3-5-haiku-20241022',
+      name: 'Claude 3.5 Haiku',
+      provider: 'Anthropic',
+      providerId: 'anthropic',
+      enabled: true,
+      toolCallType: 'native'
+    }
+  }
+  
+  // Try Groq
+  if (isProviderEnabled('groq')) {
+    return {
+      id: 'meta-llama/llama-4-maverick-17b-128e-instruct',
+      name: 'Llama 4 Maverick 17B',
+      provider: 'Groq',
+      providerId: 'groq',
+      enabled: true,
+      toolCallType: 'native'
+    }
+  }
+  
+  // Default fallback (this should not happen if any provider is configured)
+  return {
+    id: 'gpt-4o-mini',
+    name: 'GPT-4o mini',
+    provider: 'OpenAI',
+    providerId: 'openai',
+    enabled: true,
+    toolCallType: 'native'
+  }
 }
 
 export async function POST(req: Request) {
@@ -31,7 +83,7 @@ export async function POST(req: Request) {
 
     // Get cookies from the request headers instead of using the cookies() function
     const cookieHeader = req.headers.get('cookie')
-    let selectedModel = DEFAULT_MODEL
+    let selectedModel = getDefaultModel()
     let searchMode = false
 
     if (cookieHeader) {
@@ -44,7 +96,13 @@ export async function POST(req: Request) {
 
       if (cookies.selectedModel) {
         try {
-          selectedModel = JSON.parse(cookies.selectedModel) as Model
+          const parsedModel = JSON.parse(cookies.selectedModel) as Model
+          // Validate that the selected model's provider is enabled
+          if (isProviderEnabled(parsedModel.providerId)) {
+            selectedModel = parsedModel
+          } else {
+            console.warn(`Selected model provider ${parsedModel.providerId} is not enabled, using default model`)
+          }
         } catch (e) {
           console.error('Failed to parse selected model:', e)
         }
@@ -53,15 +111,14 @@ export async function POST(req: Request) {
       searchMode = cookies['search-mode'] === 'true'
     }
 
-    if (
-      !isProviderEnabled(selectedModel.providerId) ||
-      selectedModel.enabled === false
-    ) {
+    // Final check to ensure the selected model's provider is enabled
+    if (!isProviderEnabled(selectedModel.providerId)) {
+      console.error(`Selected provider ${selectedModel.providerId} is not enabled`)
       return new Response(
-        `Selected provider is not enabled ${selectedModel.providerId}`,
+        `Selected provider is not enabled: ${selectedModel.providerId}. Please check your environment variables and ensure the API key is set.`,
         {
-          status: 404,
-          statusText: 'Not Found'
+          status: 400,
+          statusText: 'Bad Request'
         }
       )
     }

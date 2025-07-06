@@ -1,5 +1,6 @@
 import { Model } from '@/lib/types/models'
 import { getBaseUrl } from '@/lib/utils/url'
+import { isProviderEnabled } from '@/lib/utils/registry'
 import defaultModels from './default-models.json'
 
 export function validateModel(model: any): model is Model {
@@ -23,6 +24,8 @@ export async function getModels(): Promise<Model[]> {
     // Construct the models.json URL
     const modelUrl = new URL('/config/models.json', baseUrlObj)
     console.log('Attempting to fetch models from:', modelUrl.toString())
+
+    let models: Model[] = []
 
     try {
       const response = await fetch(modelUrl, {
@@ -50,7 +53,9 @@ export async function getModels(): Promise<Model[]> {
       const config = JSON.parse(text)
       if (Array.isArray(config.models) && config.models.every(validateModel)) {
         console.log('Successfully loaded models from URL')
-        return config.models
+        models = config.models
+      } else {
+        throw new Error('Invalid model configuration format')
       }
     } catch (error: any) {
       // Fallback to default models if fetch fails
@@ -64,15 +69,27 @@ export async function getModels(): Promise<Model[]> {
         defaultModels.models.every(validateModel)
       ) {
         console.log('Successfully loaded default models')
-        return defaultModels.models
+        models = defaultModels.models
+      } else {
+        console.warn('Default models are also invalid, returning empty array')
+        return []
       }
     }
+
+    // Filter models to only include those with enabled providers
+    const enabledModels = models.filter(model => {
+      const isEnabled = isProviderEnabled(model.providerId)
+      if (!isEnabled) {
+        console.log(`Provider ${model.providerId} is not enabled, skipping model ${model.name}`)
+      }
+      return isEnabled && model.enabled
+    })
+
+    console.log(`Returning ${enabledModels.length} enabled models out of ${models.length} total models`)
+    return enabledModels
+
   } catch (error) {
     console.warn('Failed to load models:', error)
+    return []
   }
-
-  // Last resort: return empty array
-  console.warn('All attempts to load models failed, returning empty array')
-  return []
 }
-

@@ -43,6 +43,7 @@ export const registry = createProviderRegistry({
 export function getModel(model: string) {
   const [provider, ...modelNameParts] = model.split(':') ?? []
   const modelName = modelNameParts.join(':')
+  
   if (model.includes('ollama')) {
     const ollama = createOllama({
       baseURL: `${process.env.OLLAMA_BASE_URL}/api`
@@ -138,7 +139,12 @@ export function getToolCallModel(model?: string) {
     case 'google':
       return getModel('google:gemini-2.0-flash')
     default:
-      return getModel('openai:gpt-4o-mini')
+      // Only fallback to OpenAI if it's actually enabled
+      if (isProviderEnabled('openai')) {
+        return getModel('openai:gpt-4o-mini')
+      }
+      // If OpenAI is not enabled, try to use the same model for tool calls
+      return getModel(model || 'google:gemini-2.0-flash')
   }
 }
 
